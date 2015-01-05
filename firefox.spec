@@ -25,13 +25,7 @@
 %define system_cairo      1
 %endif
 
-# TODO Hack - FF does not support new jpeg turbo library
-# mozbz#1093615
-%if 0%{?fedora} > 21
-%define system_jpeg       0
-%else
 %define system_jpeg       1
-%endif
 
 %define enable_gstreamer  1
 
@@ -113,7 +107,7 @@
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        34.0
-Release:        6%{?pre_tag}%{?dist}
+Release:        12%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
@@ -146,10 +140,13 @@ Patch204:        rhbz-966424.patch
 Patch215:        firefox-enable-addons.patch
 Patch217:        firefox-baseline-disable.patch
 Patch218:        java-plugin-url.patch
+Patch219:        rhbz-1173156.patch
+Patch220:        rhbz-1014858.patch
 
 # Upstream patches
 Patch300:        mozilla-858919.patch
 Patch301:        mozilla-1097550-dict-fix.patch
+Patch302:        mozilla-1050258.patch
 
 # Gtk3 upstream patches
 Patch402:        mozilla-gtk3-tab-size.patch
@@ -157,6 +154,8 @@ Patch403:        mozilla-1051209.patch
 Patch404:        mozilla-1101582.patch
 Patch405:        mozilla-1073117-check.patch
 Patch406:        mozilla-1073117-color.patch
+Patch407:        mozilla-1097592.patch
+Patch408:        mozilla-1110211.patch
 
 %if %{official_branding}
 # Required by Mozilla Corporation
@@ -299,10 +298,13 @@ cd %{tarballdir}
 %ifarch %{ix86}
 %patch217 -p2 -b .baseline
 %endif
+%patch219 -p2 -b .rhbz-1173156
+%patch220 -p1 -b .rhbz-1014858
 
 # Upstream patches
 %patch300 -p1 -b .858919
 %patch301 -p1 -b .1097550-dict-fix
+%patch302 -p1 -b .1050258
 
 %if %{toolkit_gtk3}
 %patch402 -p1 -b .gtk3-tab-size
@@ -310,6 +312,8 @@ cd %{tarballdir}
 %patch404 -p1 -b .1101582
 %patch405 -p1 -b .1073117-check
 %patch406 -p1 -b .1073117-color
+%patch407 -p1 -b .1097592
+%patch408 -p2 -b .1110211
 %endif
 
 %if %{official_branding}
@@ -773,6 +777,25 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Mon Jan 5 2015 Martin Stransky <stransky@redhat.com> - 34.0-12
+- Fixed rhbz#1014858 - GLib-CRITICAL **: g_slice_set_config:
+  assertion `sys_page_size == 0' failed
+
+* Fri Jan 2 2015 Martin Stransky <stransky@redhat.com> - 34.0-11
+- Build with system jpeg on rawhide
+- Updated ATK patch for gtk3
+
+* Tue Dec 23 2014 Martin Stransky <stransky@redhat.com> - 34.0-9
+- Added fix for rhbz#1173156 - Native NTLM authentication
+  on Linux unsupported
+- Added fix for rhbz#1170109 - data corruption bug on armhfp
+
+* Sat Dec 13 2014 Martin Stransky <stransky@redhat.com> - 34.0-8
+- Gtk3 - Workaround for Firefox freeze when accessibility is enabled
+
+* Fri Dec 12 2014 Martin Stransky <stransky@redhat.com> - 34.0-7
+- Added fix for mozbz#1097592 - Firefox freeze in Gtk3
+
 * Thu Dec 11 2014 Martin Stransky <stransky@redhat.com> - 34.0-6
 - Disabled Gtk3 on Fedora 21 and earlier (rhbz#1172926)
 
