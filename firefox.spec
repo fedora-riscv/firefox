@@ -25,13 +25,7 @@
 %define system_cairo      1
 %endif
 
-# TODO Hack - FF does not support new jpeg turbo library
-# mozbz#1093615
-%if 0%{?fedora} > 21
-%define system_jpeg       0
-%else
 %define system_jpeg       1
-%endif
 
 %define enable_gstreamer  1
 
@@ -112,14 +106,14 @@
 
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
-Version:        34.0
-Release:        2%{?pre_tag}%{?dist}
+Version:        35.0
+Release:        1%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
 Source0:        ftp://ftp.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.bz2
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20141201.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20150106.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source11:       firefox-mozconfig-branded
@@ -144,14 +138,20 @@ Patch20:        firefox-build-prbool.patch
 # Unable to install addons from https pages
 Patch204:        rhbz-966424.patch
 Patch215:        firefox-enable-addons.patch
-Patch217:        firefox-baseline-disable.patch
+#Patch217:        firefox-baseline-disable.patch
+Patch219:        rhbz-1173156.patch
+Patch220:        rhbz-1014858.patch
 
 # Upstream patches
 Patch300:        mozilla-858919.patch
 Patch301:        mozilla-1097550-dict-fix.patch
 
 # Gtk3 upstream patches
-Patch402:        mozilla-gtk3-tab-size.patch
+Patch404:        mozilla-1101582.patch
+Patch405:        mozilla-1073117-check.patch
+Patch406:        mozilla-1073117-color.patch
+Patch407:        mozilla-1097592.patch
+Patch408:        mozilla-1110211.patch
 
 %if %{official_branding}
 # Required by Mozilla Corporation
@@ -290,16 +290,22 @@ cd %{tarballdir}
 %patch204 -p2 -b .966424
 %patch215 -p1 -b .addons
 # disable baseline JIT on i686 (rhbz#1047079)
-%ifarch %{ix86}
-%patch217 -p2 -b .baseline
-%endif
+#%ifarch %{ix86}
+#%patch217 -p2 -b .baseline
+#%endif
+%patch219 -p2 -b .rhbz-1173156
+%patch220 -p1 -b .rhbz-1014858
 
 # Upstream patches
 %patch300 -p1 -b .858919
 %patch301 -p1 -b .1097550-dict-fix
 
 %if %{toolkit_gtk3}
-%patch402 -p1 -b .gtk3-tab-size
+%patch404 -p1 -b .1101582
+%patch405 -p1 -b .1073117-check
+%patch406 -p1 -b .1073117-color
+%patch407 -p1 -b .1097592
+%patch408 -p2 -b .1110211
 %endif
 
 %if %{official_branding}
@@ -763,6 +769,43 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Tue Jan 6 2015 Martin Stransky <stransky@redhat.com> - 35.0-1
+- Update to 35.0 Build 1
+
+* Mon Jan 5 2015 Martin Stransky <stransky@redhat.com> - 34.0-12
+- Fixed rhbz#1014858 - GLib-CRITICAL **: g_slice_set_config:
+  assertion `sys_page_size == 0' failed
+
+* Fri Jan 2 2015 Martin Stransky <stransky@redhat.com> - 34.0-11
+- Build with system jpeg on rawhide
+- Updated ATK patch for gtk3
+
+* Tue Dec 23 2014 Martin Stransky <stransky@redhat.com> - 34.0-9
+- Added fix for rhbz#1173156 - Native NTLM authentication
+  on Linux unsupported
+- Added fix for rhbz#1170109 - data corruption bug on armhfp
+
+* Sat Dec 13 2014 Martin Stransky <stransky@redhat.com> - 34.0-8
+- Gtk3 - Workaround for Firefox freeze when accessibility is enabled
+
+* Fri Dec 12 2014 Martin Stransky <stransky@redhat.com> - 34.0-7
+- Added fix for mozbz#1097592 - Firefox freeze in Gtk3
+
+* Thu Dec 11 2014 Martin Stransky <stransky@redhat.com> - 34.0-6
+- Disabled Gtk3 on Fedora 21 and earlier (rhbz#1172926)
+
+* Wed Dec 10 2014 Martin Stransky <stransky@redhat.com> - 34.0-5
+- Disabled flash plugin instllation pop-up (mozbz#1108645)
+
+* Mon Dec 8 2014 Jiri Vanek  <jvanek@redhat.com> - 34.0-4
+- added and applied patch218, java-plugin-url.patch
+- fixed url for java plugin installation guide
+- resolves rhbz#979985
+
+* Mon Dec 8 2014 Martin Stransky <stransky@redhat.com> - 34.0-3
+- Gtk3 flash plugin fix (rhbz#1171457)
+- Gtk3 theme fixes
+
 * Wed Dec  3 2014 Jan Horak <jhorak@redhat.com> - 34.0-2
 - Fix for mozbz#1097550 - wrong default dictionary
 
