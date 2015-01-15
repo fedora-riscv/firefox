@@ -107,13 +107,13 @@
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        35.0
-Release:        1%{?pre_tag}%{?dist}
+Release:        3%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
 Source0:        ftp://ftp.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.bz2
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20150106.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20150109.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source11:       firefox-mozconfig-branded
@@ -152,6 +152,9 @@ Patch405:        mozilla-1073117-check.patch
 Patch406:        mozilla-1073117-color.patch
 Patch407:        mozilla-1097592.patch
 Patch408:        mozilla-1110211.patch
+Patch409:        mozilla-1073117-entry-button-size.patch
+Patch410:        mozilla-1073117-button-focus.patch
+Patch411:        mozilla-1073117-focus-sizes.patch
 
 %if %{official_branding}
 # Required by Mozilla Corporation
@@ -306,6 +309,9 @@ cd %{tarballdir}
 %patch406 -p1 -b .1073117-color
 %patch407 -p1 -b .1097592
 %patch408 -p2 -b .1110211
+%patch409 -p1 -b .1073117-entry-button-size
+%patch410 -p1 -b .1073117-button-focus
+%patch411 -p1 -b .1073117-focus-sizes
 %endif
 
 %if %{official_branding}
@@ -543,11 +549,9 @@ DESTDIR=$RPM_BUILD_ROOT make -C objdir install
 
 %{__mkdir_p} $RPM_BUILD_ROOT{%{_libdir},%{_bindir},%{_datadir}/applications}
 
-%if 0%{?fedora} <= 16
-desktop-file-install --vendor mozilla --dir $RPM_BUILD_ROOT%{_datadir}/applications %{SOURCE20}
-%else
+
 desktop-file-install --dir $RPM_BUILD_ROOT%{_datadir}/applications %{SOURCE20}
-%endif
+
 
 # set up the firefox start script
 %{__rm} -rf $RPM_BUILD_ROOT%{_bindir}/firefox
@@ -614,15 +618,8 @@ create_default_langpack "sv-SE" "sv"
 create_default_langpack "zh-TW" "zh"
 %endif # build_langpacks
 
-# Keep compatibility with the old preference location 
-# on Fedora 18 and earlier
-%if 0%{?fedora} < 19
-%{__mkdir_p} $RPM_BUILD_ROOT/%{mozappdir}/defaults/preferences
-%{__mkdir_p} $RPM_BUILD_ROOT/%{mozappdir}/browser/defaults
-ln -s %{mozappdir}/defaults/preferences $RPM_BUILD_ROOT/%{mozappdir}/browser/defaults/preferences
-%else
+
 %{__mkdir_p} $RPM_BUILD_ROOT/%{mozappdir}/browser/defaults/preferences
-%endif
 
 # System extensions
 %{__mkdir_p} $RPM_BUILD_ROOT%{_datadir}/mozilla/extensions/%{firefox_app_id}
@@ -658,8 +655,7 @@ rm -f ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/libmozalloc.so
 rm -f ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/libxul.so
 #---------------------------------------------------------------------
 
-# Moves defaults/preferences to browser/defaults/preferences in Fedora 19+
-%if 0%{?fedora} >= 19
+# Moves defaults/preferences to browser/defaults/preferences
 %pretrans -p <lua>
 require 'posix'
 require 'os'
@@ -677,7 +673,7 @@ if (posix.stat("%{mozappdir}/browser/defaults/preferences", "type") == "link") t
     end
   end
 end
-%endif
+
 
 %preun
 # is it a final removal?
@@ -769,6 +765,15 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Wed Jan 14 2015 Martin Stransky <stransky@redhat.com> - 35.0-3
+- Gtk3 - replaced obsoleted focus properties
+
+* Mon Jan 12 2015 Martin Stransky <stransky@redhat.com> - 35.0-2
+- Update to 35.0 Build 3
+- Gtk3 - added fix for button/entry box sizes
+- Gtk3 - added fix for button/entry focus sizes
+- Spec clean-up (by moez.roy@gmail.com)
+
 * Tue Jan 6 2015 Martin Stransky <stransky@redhat.com> - 35.0-1
 - Update to 35.0 Build 1
 
