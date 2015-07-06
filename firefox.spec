@@ -107,7 +107,7 @@
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        39.0
-Release:        6%{?pre_tag}%{?dist}
+Release:        7%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
@@ -161,6 +161,8 @@ Patch423:        mozilla-1129873-apppicker.patch
 # Fix Skia Neon stuff on AArch64
 Patch500:        aarch64-fix-skia.patch
 
+# Don't crash at end
+Patch510:        mozilla-884831.patch
 
 %if %{official_branding}
 # Required by Mozilla Corporation
@@ -319,6 +321,8 @@ cd %{tarballdir}
 
 %patch500 -p1
 
+%patch510 -p1 -b .884831
+
 %if %{official_branding}
 # Required by Mozilla Corporation
 
@@ -473,6 +477,10 @@ MOZ_OPT_FLAGS=$(echo "$MOZ_OPT_FLAGS" | %{__sed} -e 's/-O2//')
 %endif
 %ifarch s390
 MOZ_OPT_FLAGS=$(echo "$MOZ_OPT_FLAGS" | %{__sed} -e 's/-g/-g1/')
+# If MOZ_DEBUG_FLAGS is empty, firefox's build will default it to "-g" which
+# overrides the -g1 from line above and breaks building on s390
+# (OOM when linking, rhbz#1238225)
+export MOZ_DEBUG_FLAGS=" "
 %endif
 %ifarch s390 %{arm} ppc aarch64
 MOZ_LINK_FLAGS="-Wl,--no-keep-memory -Wl,--reduce-memory-overheads"
@@ -812,6 +820,10 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Mon Jul 06 2015 Martin Stransky <stransky@redhat.com> - 39.0-7
+- Added a fix for rhbz#1240259 - Firefox 39 does not open
+  home page but "restore session"
+
 * Thu Jul 02 2015 Martin Stransky <stransky@redhat.com> - 39.0-6
 - Added symbolic (high contrast) icon
 
