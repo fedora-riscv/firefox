@@ -84,7 +84,7 @@
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        40.0
-Release:        5%{?pre_tag}%{?dist}
+Release:        7%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
@@ -130,6 +130,7 @@ Patch421:        mozilla-1169233.patch
 Patch422:        mozilla-1169232.patch
 Patch423:        mozilla-1129873-apppicker.patch
 Patch424:        mozilla-entry-padding.patch
+Patch425:        mozilla-1192243.patch
 
 # Fix Skia Neon stuff on AArch64
 Patch500:        aarch64-fix-skia.patch
@@ -276,6 +277,7 @@ cd %{tarballdir}
 %patch422 -p1 -b .1169232
 %patch423 -p1 -b .1129873-apppicker
 %patch424 -p2 -b .entry-padding
+%patch425 -p1 -b .1192243
 %endif
 
 %patch500 -p1
@@ -420,7 +422,7 @@ MOZ_OPT_FLAGS=$(echo "$RPM_OPT_FLAGS" | %{__sed} -e 's/-Wall//')
 MOZ_OPT_FLAGS="$MOZ_OPT_FLAGS -Wformat-security -Wformat -Werror=format-security"
 # Use hardened build?
 %if 0%{?fedora} > 22
-MOZ_OPT_FLAGS="$MOZ_OPT_FLAGS -fPIC -pie -Wl,-z,relro -Wl,-z,now"
+MOZ_OPT_FLAGS="$MOZ_OPT_FLAGS -fPIC -Wl,-z,relro -Wl,-z,now"
 %endif
 %if %{?debug_build}
 MOZ_OPT_FLAGS=$(echo "$MOZ_OPT_FLAGS" | %{__sed} -e 's/-O2//')
@@ -768,6 +770,12 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Thu Aug 20 2015 Martin Stransky <stransky@redhat.com> - 40.0-7
+- Enabled pie - rhbz#1246287
+
+* Thu Aug 20 2015 Petr Jasicek <pjasicek@redhat.com> - 40.0-6
+- Fix crash reporter layout under GTK3 - mozbz#1192243
+
 * Wed Aug 19 2015 Martin Stransky <stransky@redhat.com> - 40.0-5
 - Disable async addons init - mozbz#1196000
 
