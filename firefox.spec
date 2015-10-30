@@ -56,7 +56,7 @@
 %global libvpx_version 1.3.0
 
 %if %{?system_nss}
-%global nspr_version 4.10.8
+%global nspr_version 4.10.10
 %global nspr_build_version %(pkg-config --silence-errors --modversion nspr 2>/dev/null || echo 65536)
 %global nss_version 3.19.2
 %global nss_build_version %(pkg-config --silence-errors --modversion nss 2>/dev/null || echo 65536)
@@ -71,7 +71,7 @@
 %global mozappdir     %{_libdir}/%{name}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{version}
 %global langpackdir   %{mozappdir}/langpacks
-%global tarballdir    mozilla-release
+%global tarballdir    %{name}-%{version}
 
 %define official_branding       1
 %define build_langpacks         1
@@ -85,14 +85,14 @@
 
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
-Version:        41.0.2
-Release:        2%{?pre_tag}%{?dist}
+Version:        42.0
+Release:        1%{?pre_tag}%{?dist}
 URL:            http://www.mozilla.org/projects/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
 Source0:        ftp://ftp.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20151015.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20151030.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source12:       firefox-redhat-default-prefs.js
@@ -126,11 +126,7 @@ Patch221:        firefox-fedora-ua.patch
 # Upstream patches
 
 # Gtk3 upstream patches
-Patch420:        mozilla-1160154.patch
 Patch425:        mozilla-1192243.patch
-Patch426:        mozilla-1180971.patch
-Patch427:        mozilla-1190935.patch
-Patch428:        mozilla-1205045.patch
 
 # Fix Skia Neon stuff on AArch64
 Patch500:        aarch64-fix-skia.patch
@@ -267,16 +263,12 @@ cd %{tarballdir}
 %patch204 -p2 -b .966424
 %patch215 -p1 -b .addons
 %patch219 -p2 -b .rhbz-1173156
-%patch220 -p1 -b .rhbz-1014858
+#%patch220 -p1 -b .rhbz-1014858
 %patch221 -p2 -b .fedora-ua
 
 # Upstream patches
 %if %{toolkit_gtk3}
-%patch420 -p1 -b .1160154
 %patch425 -p1 -b .1192243
-%patch426 -p1 -b .1180971
-%patch427 -p1 -b .1190935
-#%patch428 -p1 -b .1205045
 %endif
 
 %patch500 -p1
@@ -748,6 +740,7 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 %{mozappdir}/browser/crashreporter-override.ini
 %endif
 %{mozappdir}/*.so
+%{mozappdir}/gtk2/*.so
 %{mozappdir}/chrome.manifest
 %{mozappdir}/components
 %{mozappdir}/defaults/pref/channel-prefs.js
@@ -769,6 +762,9 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Thu Oct 29 2015 Martin Stransky <stransky@redhat.com> - 42.0-1
+- Update to 42.0
+
 * Thu Oct 15 2015 Petr Jasicek <pjasicek@redhat.com> - 41.0.2-2
 - Added private browsing action to desktop file - rhbz#1262564
 
