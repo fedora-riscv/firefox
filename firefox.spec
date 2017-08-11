@@ -1,4 +1,3 @@
-
 # Use ALSA backend?
 %define alsa_backend      0
 
@@ -66,9 +65,13 @@
 
 %if %{?system_nss}
 %global nspr_version 4.10.10
-%global nspr_build_version %(pkg-config --silence-errors --modversion nspr 2>/dev/null || echo 65536)
+# NSS/NSPR quite often ends in build override, so as requirement the version
+# we're building against could bring us some broken dependencies from time to time.
+%global nspr_build_version %{nspr_version}
+#%global nspr_build_version %(pkg-config --silence-errors --modversion nspr 2>/dev/null || echo 65536)
 %global nss_version 3.29.3
-%global nss_build_version %(pkg-config --silence-errors --modversion nss 2>/dev/null || echo 65536)
+%global nss_build_version %{nss_version}
+#%global nss_build_version %(pkg-config --silence-errors --modversion nss 2>/dev/null || echo 65536)
 %endif
 
 %if %{?system_sqlite}
@@ -94,13 +97,13 @@
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        55.0
-Release:        1%{?pre_tag}%{?dist}
+Release:        6%{?pre_tag}%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Group:          Applications/Internet
 Source0:        https://archive.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20170802.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20170807.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source12:       firefox-redhat-default-prefs.js
@@ -127,6 +130,9 @@ Patch29:        build-big-endian.patch
 Patch30:        fedora-build.patch
 Patch31:        build-ppc64-s390x-curl.patch
 Patch32:        build-rust-ppc64le.patch
+Patch33:        build-ppc-s390-dom.patch
+Patch34:        build-cubeb-pulse-arm.patch
+Patch35:        build-ppc-jit.patch
 
 # Fedora specific patches
 # Unable to install addons from https pages
@@ -300,6 +306,11 @@ This package contains results of tests executed during build.
 %patch30 -p1 -b .fedora-build
 %patch31 -p1 -b .ppc64-s390x-curl
 %patch32 -p1 -b .rust-ppc64le
+%patch33 -p1 -b .ppc-s390-dom
+%patch34 -p1 -b .cubeb-pulse-arm
+%ifarch ppc ppc64 ppc64le
+%patch35 -p1 -b .ppc-jit
+%endif
 
 %patch3  -p1 -b .arm
 
@@ -841,6 +852,15 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Fri Aug 11 2017 Jan Horak <jhorak@redhat.com> - 55.0-6
+- Do not require nss and nspr which we build package against
+
+* Tue Aug 8 2017 Martin Stransky <stransky@redhat.com> - 55.0-5
+- Rebuild
+
+* Mon Aug 7 2017 Martin Stransky <stransky@redhat.com> - 55.0-2
+- Updated to 55.0 (B3)
+
 * Wed Aug 2 2017 Martin Stransky <stransky@redhat.com> - 55.0-1
 - Updated to 55.0 (B1)
 
