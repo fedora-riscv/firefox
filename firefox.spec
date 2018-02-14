@@ -1,6 +1,3 @@
-# Temporary disable
-ExcludeArch: ppc64 ppc64le aarch64 armv7hl s390x
-
 # Use system nspr/nss?
 %global system_nss        1
 
@@ -97,13 +94,13 @@ ExcludeArch: ppc64 ppc64le aarch64 armv7hl s390x
 
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
-Version:        58.0
+Version:        58.0.2
 Release:        1%{?pre_tag}%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Source0:        https://archive.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20180123.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20180214.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source12:       firefox-redhat-default-prefs.js
@@ -134,6 +131,7 @@ Patch36:        build-missing-xlocale-h.patch
 Patch37:        build-jit-atomic-always-lucky.patch
 # Fixing missing cacheFlush when JS_CODEGEN_NONE is used (s390x)
 Patch38:        build-cacheFlush-missing.patch
+Patch39:        mozilla-fix-attr-order.patch
 
 # Fedora specific patches
 Patch215:        firefox-enable-addons.patch
@@ -146,6 +144,7 @@ Patch226:        rhbz-1354671.patch
 Patch229:        firefox-nss-version.patch
 Patch230:        firefox-fedora-rhbz-1537287-v2.patch
 Patch231:        build-with-nss-3.34.0.patch
+Patch232:        build-jit-CodeAlignment.patch
 
 # Upstream patches
 Patch402:        mozilla-1196777.patch
@@ -156,6 +155,8 @@ Patch411:        mozilla-1321521-2.patch
 Patch412:        mozilla-1337988.patch
 Patch413:        mozilla-1353817.patch
 Patch416:        mozilla-1399611.patch
+# ppc64/le build patch
+Patch417:        mozilla-1416170.patch
 
 # Debian patches
 Patch500:        mozilla-440908.patch
@@ -308,6 +309,7 @@ This package contains results of tests executed during build.
 #%patch35 -p1 -b .ppc-jit
 #%endif
 %patch37 -p1 -b .jit-atomic-lucky
+%patch39 -p1 -b .fix-attr-order
 
 %patch3  -p1 -b .arm
 
@@ -325,6 +327,7 @@ This package contains results of tests executed during build.
 %patch230 -p1 -b .rhbz-1537287
 %endif
 %patch231 -p1
+%patch232 -p1 -b .CodeAlignment
 
 %patch402 -p1 -b .1196777
 %patch406 -p1 -b .256180
@@ -338,7 +341,8 @@ This package contains results of tests executed during build.
 
 %patch413 -p1 -b .1353817
 # CSD - Disabled now
-#%patch416 -p1 -b .1399611
+%patch416 -p1 -b .1399611
+%patch417 -p1 -b .1416170
 
 # Debian extension patch
 # Disabled due to new pref module, see
@@ -521,7 +525,7 @@ export MOZ_DEBUG_FLAGS=" "
 MOZ_LINK_FLAGS="-Wl,--no-keep-memory -Wl,--reduce-memory-overheads"
 %endif
 %ifarch %{arm}
-RUSTFLAGS="-Cdebuginfo=0"
+export RUSTFLAGS="-Cdebuginfo=0"
 %endif
 export CFLAGS=$MOZ_OPT_FLAGS
 export CXXFLAGS=$MOZ_OPT_FLAGS
@@ -745,6 +749,9 @@ sed -i -e "s/\[Crash Reporter\]/[Crash Reporter]\nEnabled=1/" %{buildroot}/%{moz
 # Default
 %{__cp} %{SOURCE12} %{buildroot}%{mozappdir}/browser/defaults/preferences
 
+# Copy over run-mozilla.sh
+%{__cp} build/unix/run-mozilla.sh %{buildroot}%{mozappdir}
+
 # Add distribution.ini
 %{__mkdir_p} %{buildroot}%{mozappdir}/distribution
 %{__cp} %{SOURCE26} %{buildroot}%{mozappdir}/distribution
@@ -827,7 +834,7 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 %{mozappdir}/browser/omni.ja
 %{mozappdir}/browser/icons
 %{mozappdir}/chrome.manifest
-#%{mozappdir}/run-mozilla.sh
+%{mozappdir}/run-mozilla.sh
 %{mozappdir}/application.ini
 %{mozappdir}/pingsender
 %exclude %{mozappdir}/removed-files
@@ -868,6 +875,27 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Wed Feb 14 2018 Jan Horak <jhorak@redhat.com> - 58.0.2-1
+- Update to 58.0.2
+
+* Tue Feb 13 2018 Martin Stransky <stransky@redhat.com> - 58.0.1-3
+- Added build fix for gcc8 by Tom Callaway
+
+* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 58.0.1-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Tue Jan 30 2018 Martin Stransky <stransky@redhat.com> - 58.0.1-1
+- Update to 58.0.1
+
+* Wed Jan 24 2018 Martin Stransky <stransky@redhat.com> - 58.0-4
+- Enabled second arches
+
+* Wed Jan 24 2018 Martin Stransky <stransky@redhat.com> - 58.0-3
+- Enabled titlebar/csd drawing patch again (mozbz#1399611).
+
+* Wed Jan 24 2018 Martin Stransky <stransky@redhat.com> - 58.0-2
+- Ship run-mozilla.sh script.
+
 * Tue Jan 23 2018 Martin Stransky <stransky@redhat.com> - 58.0-1
 - Update to 58.0
 
