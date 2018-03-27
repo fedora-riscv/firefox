@@ -80,7 +80,7 @@
 %global mozappdir     %{_libdir}/%{name}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{version}
 %global langpackdir   %{mozappdir}/langpacks
-%global release_hash  c61f5f5ead48c78a80c80db5c489bdc7cfaf8175
+%global release_hash  239e434d6d2b8e1e2b697c3416d1e96d48fe98e5
 %global tarballdir    mozilla-release-%{release_hash}
 
 %global official_branding       1
@@ -142,7 +142,7 @@ Patch224:        mozilla-1170092.patch
 Patch225:        mozilla-1005640-accept-lang.patch
 #ARM run-time patch
 Patch226:        rhbz-1354671.patch
-Patch229:        firefox-nss-version.patch
+Patch230:        fedora-enable-csd.patch
 
 # Upstream patches
 Patch402:        mozilla-1196777.patch
@@ -311,6 +311,7 @@ This package contains results of tests executed during build.
 %ifarch aarch64
 %patch226 -p1 -b .1354671
 %endif
+%patch230 -p1 -R -b .fedora-enable-csd.patch
 
 %patch402 -p1 -b .1196777
 %patch406 -p1 -b .256180
@@ -845,6 +846,15 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 %changelog
 * Tue Mar 27 2018 Jan Horak <jhorak@redhat.com> - 59.0.2-1
 - Update to 59.0.2
+
+* Sat Mar 17 2018 Martin Stransky <stransky@redhat.com> - 59.0.1-1
+- Updated to 59.0.1
+
+* Wed Mar 14 2018 Martin Stransky <stransky@redhat.com> - 59.0-4
+- Fixed broken langpacks.
+
+* Tue Mar 13 2018 Martin Stransky <stransky@redhat.com> - 59.0-3
+- Enabled rendering to titlebar.
 
 * Mon Mar 12 2018 Martin Stransky <stransky@redhat.com> - 59.0-2
 - Updated to 59.0 build c61f5f5ead48c78a80c80db5c489bdc7cfaf8175
