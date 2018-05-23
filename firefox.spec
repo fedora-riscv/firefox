@@ -1,6 +1,13 @@
 # Use system nspr/nss?
 %global system_nss        1
 
+# Wayland backend is not finished yet, see
+# https://bugzilla.mozilla.org/show_bug.cgi?id=635134
+# for details.
+#
+# Build with Wayland Gtk+ backend?
+%global wayland_backend   0
+
 # Use system hunspell?
 %if 0%{?fedora} > 25
 %global system_hunspell   1
@@ -61,12 +68,12 @@
 %endif
 
 %if %{?system_nss}
-%global nspr_version 4.17.0
+%global nspr_version 4.19
 # NSS/NSPR quite often ends in build override, so as requirement the version
 # we're building against could bring us some broken dependencies from time to time.
 #%global nspr_build_version %(pkg-config --silence-errors --modversion nspr 2>/dev/null || echo 65536)
 %global nspr_build_version %{nspr_version}
-%global nss_version 3.34
+%global nss_version 3.36.1
 #%global nss_build_version %(pkg-config --silence-errors --modversion nss 2>/dev/null || echo 65536)
 %global nss_build_version %{nss_version}
 %endif
@@ -80,8 +87,7 @@
 %global mozappdir     %{_libdir}/%{name}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{version}
 %global langpackdir   %{mozappdir}/langpacks
-%global release_hash  239e434d6d2b8e1e2b697c3416d1e96d48fe98e5
-%global tarballdir    mozilla-release-%{release_hash}
+%global tarballdir    firefox-%{version}
 
 %global official_branding       1
 %global build_langpacks         1
@@ -95,13 +101,13 @@
 
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
-Version:        59.0.2
+Version:        60.0.1
 Release:        1%{?pre_tag}%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
-Source0:        https://hg.mozilla.org/releases/mozilla-release/archive/%{release_hash}.tar.bz2
+Source0:        https://hg.mozilla.org/releases/mozilla-release/archive/firefox-%{version}%{?pre_version}.source.tar.xz
 %if %{build_langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20180327.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20180523.tar.xz
 %endif
 Source10:       firefox-mozconfig
 Source12:       firefox-redhat-default-prefs.js
@@ -113,13 +119,9 @@ Source25:       firefox-symbolic.svg
 Source26:       distribution.ini
 Source27:       google-api-key
 Source28:       firefox-wayland.sh.in
-Source29:       firefox-x11.desktop
-Source30:       firefox-x11.sh.in
 
 # Build patches
 Patch3:         mozilla-build-arm.patch
-# https://bugzilla.redhat.com/show_bug.cgi?id=814879#c3
-Patch18:        xulrunner-24.0-jemalloc-ppc.patch
 Patch25:        rhbz-1219542-s390-build.patch
 Patch26:        build-icu-big-endian.patch
 Patch27:        mozilla-1335250.patch
@@ -132,7 +134,7 @@ Patch35:        build-ppc-jit.patch
 Patch37:        build-jit-atomic-always-lucky.patch
 # Fixing missing cacheFlush when JS_CODEGEN_NONE is used (s390x)
 Patch38:        build-cacheFlush-missing.patch
-Patch39:        mozilla-fix-attr-order.patch
+Patch40:        build-aarch64-skia.patch
 
 # Fedora specific patches
 Patch215:        firefox-enable-addons.patch
@@ -142,7 +144,8 @@ Patch224:        mozilla-1170092.patch
 Patch225:        mozilla-1005640-accept-lang.patch
 #ARM run-time patch
 Patch226:        rhbz-1354671.patch
-Patch230:        fedora-enable-csd.patch
+# ppc(64)le run-time js patch
+Patch227:        rhbz-1498561.patch
 
 # Upstream patches
 Patch402:        mozilla-1196777.patch
@@ -152,6 +155,12 @@ Patch410:        mozilla-1321521.patch
 Patch411:        mozilla-1321521-2.patch
 Patch412:        mozilla-1337988.patch
 Patch413:        mozilla-1353817.patch
+Patch414:        mozilla-1435212-ffmpeg-4.0.patch
+Patch415:        Bug-1238661---fix-mozillaSignalTrampoline-to-work-.patch
+Patch416:        mozilla-1424422.patch
+Patch417:        bug1375074-save-restore-x28.patch
+
+Patch421:        complete-csd-window-offset-mozilla-1457691.patch
 
 # Debian patches
 Patch500:        mozilla-440908.patch
@@ -291,14 +300,14 @@ This package contains results of tests executed during build.
 # ignored during this compare.
 
 
-%patch18 -p1 -b .jemalloc-ppc
 %ifarch s390
 %patch25 -p1 -b .rhbz-1219542-s390
 %endif
+%if 0%{?big_endian}
 %patch29 -p1 -b .big-endian
+%endif
 %patch37 -p1 -b .jit-atomic-lucky
-%patch39 -p1 -b .fix-attr-order
-
+%patch40 -p1 -b .aarch64-skia
 %patch3  -p1 -b .arm
 
 # Fedora patches
@@ -311,11 +320,19 @@ This package contains results of tests executed during build.
 %ifarch aarch64
 %patch226 -p1 -b .1354671
 %endif
-%patch230 -p1 -R -b .fedora-enable-csd.patch
+%patch227 -p1 -b .rhbz-1498561
 
 %patch402 -p1 -b .1196777
 %patch406 -p1 -b .256180
 %patch413 -p1 -b .1353817
+%patch414 -p1 -b .ffmpeg-4.0
+%ifarch %{arm}
+%patch415 -p1 -b .mozilla-1238661
+%endif
+%patch416 -p1 -b .1424422
+%patch417 -p1 -b .bug1375074-save-restore-x28
+
+%patch421 -p1 -b .mozilla-1457691
 
 # Patch for big endian platforms only
 %if 0%{?big_endian}
@@ -324,6 +341,11 @@ This package contains results of tests executed during build.
 
 %{__rm} -f .mozconfig
 %{__cp} %{SOURCE10} .mozconfig
+%if %{?wayland_backend}
+echo "ac_add_options --enable-default-toolkit=cairo-gtk3-wayland" >> .mozconfig
+%else
+echo "ac_add_options --enable-default-toolkit=cairo-gtk3" >> .mozconfig
+%endif
 %if %{official_branding}
 echo "ac_add_options --enable-official-branding" >> .mozconfig
 %endif
@@ -390,8 +412,8 @@ echo 'ac_add_options --enable-optimize' >> .mozconfig
 echo "ac_add_options --disable-debug" >> .mozconfig
 %endif
 
-# s390(x) fails to start with jemalloc enabled
-%ifarch s390 s390x
+# Second arches fail to start with jemalloc enabled
+%ifnarch %{ix86} x86_64
 echo "ac_add_options --disable-jemalloc" >> .mozconfig
 %endif
 
@@ -491,7 +513,7 @@ MOZ_OPT_FLAGS=$(echo "$MOZ_OPT_FLAGS" | %{__sed} -e 's/-g/-g1/')
 # (OOM when linking, rhbz#1238225)
 export MOZ_DEBUG_FLAGS=" "
 %endif
-%ifarch s390 %{arm} ppc aarch64
+%ifarch s390 %{arm} ppc aarch64 %{ix86}
 MOZ_LINK_FLAGS="-Wl,--no-keep-memory -Wl,--reduce-memory-overheads"
 %endif
 %ifarch %{arm}
@@ -579,6 +601,10 @@ desktop-file-install --dir %{buildroot}%{_datadir}/applications %{SOURCE20}
 %{__rm} -rf %{buildroot}%{_bindir}/firefox
 %{__cat} %{SOURCE21} > %{buildroot}%{_bindir}/firefox
 %{__chmod} 755 %{buildroot}%{_bindir}/firefox
+%if %{?wayland_backend}
+%{__cat} %{SOURCE28} > %{buildroot}%{_bindir}/firefox-wayland
+%{__chmod} 755 %{buildroot}%{_bindir}/firefox-wayland
+%endif
 
 %{__install} -p -D -m 644 %{SOURCE23} %{buildroot}%{_mandir}/man1/firefox.1
 
@@ -718,6 +744,9 @@ sed -i -e "s/\[Crash Reporter\]/[Crash Reporter]\nEnabled=1/" %{buildroot}/%{moz
 
 # Default
 %{__cp} %{SOURCE12} %{buildroot}%{mozappdir}/browser/defaults/preferences
+%if %{?wayland_backend}
+echo 'pref("webgl.force-enabled",true);' >> %{buildroot}%{mozappdir}/browser/defaults/preferences
+%endif
 
 # Copy over run-mozilla.sh
 %{__cp} build/unix/run-mozilla.sh %{buildroot}%{mozappdir}
@@ -777,6 +806,9 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 
 %files -f %{name}.lang
 %{_bindir}/firefox
+%if %{?wayland_backend}
+%{_bindir}/firefox-wayland
+%endif
 %{mozappdir}/firefox
 %{mozappdir}/firefox-bin
 %doc %{_mandir}/man1/*
@@ -831,9 +863,6 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 %{mozappdir}/plugin-container
 %{mozappdir}/gmp-clearkey
 %{mozappdir}/fonts/EmojiOneMozilla.ttf
-%if !%{?system_libicu}
-%{mozappdir}/icudt*.dat
-%endif
 %if !%{?system_nss}
 %{mozappdir}/libfreeblpriv3.chk
 %{mozappdir}/libnssdbm3.chk
@@ -844,6 +873,40 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 #---------------------------------------------------------------------
 
 %changelog
+* Wed May 23 2018 Jan Horak <jhorak@redhat.com> - 60.0.1-1
+- Update to 60.0.1
+
+* Wed May 16 2018 Martin Stransky <stransky@redhat.com> - 60.0-6
+- Added patch from rhbz#1498561 - second arch (ppc*) crashes.
+
+* Wed May 16 2018 Martin Stransky <stransky@redhat.com> - 60.0-5
+- Disabled jemalloc on second arches.
+
+* Thu May 3 2018 Martin Stransky <stransky@redhat.com> - 60.0-4
+- Updated to Firefox 60 build 2
+
+* Thu May 3 2018 Martin Stransky <stransky@redhat.com> - 60.0-3
+- Added patch from mozbz#1375074 - fixes aarch64 baseline JIT crashes
+
+* Thu May 3 2018 Martin Stransky <stransky@redhat.com> - 60.0-2
+- Make Wayland backend optional and disable it by default due to WebGL issues.
+
+* Wed May 2 2018 Martin Stransky <stransky@redhat.com> - 60.0-1
+- Update to Firefox 60 build 1
+- Ship firefox-wayland launch script
+
+* Mon Apr 30 2018 Martin Stransky <stransky@redhat.com> - 60.0-0.5
+- Build with Wayland backend enabled.
+
+* Mon Apr 30 2018 Martin Stransky <stransky@redhat.com> - 60.0-0.4
+- Added patches for correct popups position at CSD mode (mozilla-1457691).
+
+* Fri Apr 27 2018 Martin Stransky <stransky@redhat.com> - 60.0-0.2
+- Update to 60.0 Beta 16
+
+* Tue Apr 24 2018 Martin Stransky <stransky@redhat.com> - 60.0-0.1
+- Update to 60.0 Beta 15
+
 * Tue Mar 27 2018 Jan Horak <jhorak@redhat.com> - 59.0.2-1
 - Update to 59.0.2
 
@@ -1355,4 +1418,3 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 
 * Mon Jan 4 2016 Martin Stransky <stransky@redhat.com> - 43.0.3-2
 - Enabled Skia (rhbz#1282134)
-
