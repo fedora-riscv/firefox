@@ -4,4 +4,4 @@
 #
 
 export GDK_BACKEND=wayland
-exec /usr/bin/firefox "$@"
+exec /usr/bin/firefox "$@" >> ~/_ff_wayland_log.txt 2>&1

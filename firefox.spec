@@ -43,11 +43,7 @@
 # Build as a debug package?
 %global debug_build       0
 
-%global disable_elfhack       0
-%if 0%{?fedora} > 28
 %global disable_elfhack       1
-%endif
-
 
 %global default_bookmarks_file  %{_datadir}/bookmarks/default-bookmarks.html
 %global firefox_app_id  \{ec8030f7-c20a-464f-9b0e-13a3a9e97384\}
@@ -87,14 +83,14 @@
 %global enable_mozilla_crashreporter       0
 %if !%{debug_build}
 %ifarch %{ix86} x86_64
-%global enable_mozilla_crashreporter       1
+%global enable_mozilla_crashreporter       0
 %endif
 %endif
 
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        62.0.3
-Release:        1%{?pre_tag}%{?dist}
+Release:        1.debug%{?pre_tag}%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Source0:        https://hg.mozilla.org/releases/mozilla-release/archive/firefox-%{version}%{?pre_version}.source.tar.xz
@@ -155,6 +151,8 @@ Patch420:        rb246462.patch
 Patch570:        mozilla-1467125.patch
 Patch572:        mozilla-1467128.patch
 Patch573:        mozilla-1415078.patch
+Patch574:        mozilla-1491824.patch
+Patch575:        clipboard-debug.patch
 
 # Debian patches
 Patch500:        mozilla-440908.patch
@@ -345,6 +343,8 @@ This package contains results of tests executed during build.
 %patch570 -p1 -b .mozilla-1467125
 %patch572 -p1 -b .mozilla-1467128
 %patch573 -p1 -b .mozilla-1415078
+%patch574 -p1 -b .mozilla-1491824
+%patch575 -p1 -b .clipboard-debug
 %endif
 
 %{__rm} -f .mozconfig
