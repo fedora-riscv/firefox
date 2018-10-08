@@ -1,0 +1,174 @@
+diff -up firefox-62.0.3/widget/gtk/nsClipboard.cpp.old firefox-62.0.3/widget/gtk/nsClipboard.cpp
+--- firefox-62.0.3/widget/gtk/nsClipboard.cpp.old	2018-10-05 13:19:31.666889864 +0200
++++ firefox-62.0.3/widget/gtk/nsClipboard.cpp	2018-10-05 13:34:17.829787004 +0200
+@@ -145,6 +145,8 @@ nsClipboard::SetData(nsITransferable *aT
+         return NS_OK;
+     }
+ 
++    fprintf(stderr, "nsClipboard::SetData(), aWhichClipboard = %d\n", aWhichClipboard);
++
+     // Clear out the clipboard in order to set the new data
+     EmptyClipboard(aWhichClipboard);
+ 
+@@ -211,6 +213,8 @@ nsClipboard::SetData(nsITransferable *aT
+         gtk_clipboard_set_with_data(gtkClipboard, gtkTargets, numTargets,
+                                     clipboard_get_cb, clipboard_clear_cb, this))
+     {
++        fprintf(stderr, "nsClipboard::SetData(), gtk_clipboard_set_with_data(), aWhichClipboard = %d\n", aWhichClipboard);
++
+         // We managed to set-up the clipboard so update internal state
+         // We have to set it now because gtk_clipboard_set_with_data() calls clipboard_clear_cb()
+         // which reset our internal state
+@@ -372,7 +376,7 @@ nsClipboard::EmptyClipboard(int32_t aWhi
+             mSelectionOwner->LosingOwnership(mSelectionTransferable);
+             mSelectionOwner = nullptr;
+         }
+-        mSelectionTransferable = nullptr;
++        mSelectionTransferable = nullptr;        
+     }
+     else {
+         if (mGlobalOwner) {
+@@ -382,6 +386,9 @@ nsClipboard::EmptyClipboard(int32_t aWhi
+         mGlobalTransferable = nullptr;
+     }
+ 
++    fprintf(stderr, "nsClipboard::EmptyClipboard() = %s\n",
++      aWhichClipboard == kSelectionClipboard ? "Primary" : "Global");
++
+     return NS_OK;
+ }
+ 
+@@ -481,14 +488,15 @@ nsClipboard::SelectionGetEvent(GtkClipbo
+         whichClipboard = kGlobalClipboard;
+     else
+         return; // THAT AIN'T NO CLIPBOARD I EVER HEARD OF
++    
++    fprintf(stderr, "nsClipboard::SelectionGetEvent(), selection = %s\n", 
++      selection == GDK_SELECTION_PRIMARY ? "Primary" : "Global");
+ 
+     nsCOMPtr<nsITransferable> trans = GetTransferable(whichClipboard);
+     if (!trans) {
+       // We have nothing to serve
+-#ifdef DEBUG_CLIPBOARD
+-      printf("nsClipboard::SelectionGetEvent() - %s clipboard is empty!\n",
++      fprintf(stderr, "nsClipboard::SelectionGetEvent() - %s clipboard is empty!\n",
+              whichClipboard == kSelectionClipboard ? "Selection" : "Global");
+-#endif
+       return;
+     }
+ 
+@@ -527,6 +535,7 @@ nsClipboard::SelectionGetEvent(GtkClipbo
+                                      strlen(utf8string));
+ 
+         free(utf8string);
++        fprintf(stderr, "nsClipboard::SelectionGetEvent(), TEXT OK\n"); 
+         return;
+     }
+ 
+@@ -556,6 +565,7 @@ nsClipboard::SelectionGetEvent(GtkClipbo
+ 
+         gtk_selection_data_set_pixbuf(aSelectionData, pixbuf);
+         g_object_unref(pixbuf);
++        fprintf(stderr, "nsClipboard::SelectionGetEvent(), IMAGE OK\n"); 
+         return;
+     }
+ 
+@@ -579,6 +589,7 @@ nsClipboard::SelectionGetEvent(GtkClipbo
+     if (primitive_data) {
+         // Check to see if the selection data is text/html
+         if (selectionTarget == gdk_atom_intern (kHTMLMime, FALSE)) {
++            fprintf(stderr, "nsClipboard::SelectionGetEvent(), HTML/TEXT\n"); 
+             /*
+              * "text/html" can be encoded UCS2. It is recommended that
+              * documents transmitted as UCS2 always begin with a ZERO-WIDTH
+@@ -602,6 +613,7 @@ nsClipboard::SelectionGetEvent(GtkClipbo
+                                8, /* 8 bits in a unit */
+                                (const guchar *)primitive_data, len);
+         g_free(primitive_data);
++        fprintf(stderr, "nsClipboard::SelectionGetEvent(), PRIMITIVE DATA OK\n"); 
+     }
+ 
+     g_free(target_name);
+@@ -684,9 +696,7 @@ void ConvertHTMLtoUCS2(const char* data,
+         // get the decoder
+         auto encoding = Encoding::ForLabelNoReplacement(charset);
+         if (!encoding) {
+-#ifdef DEBUG_CLIPBOARD
+-            g_print("        get unicode decoder error\n");
+-#endif
++            fprintf(stderr, "        get unicode decoder error\n");
+             outUnicodeLen = 0;
+             return;
+         }
+diff -up firefox-62.0.3/widget/gtk/nsClipboardWayland.cpp.old firefox-62.0.3/widget/gtk/nsClipboardWayland.cpp
+--- firefox-62.0.3/widget/gtk/nsClipboardWayland.cpp.old	2018-10-05 13:02:07.764700741 +0200
++++ firefox-62.0.3/widget/gtk/nsClipboardWayland.cpp	2018-10-05 13:34:29.705731882 +0200
+@@ -130,6 +130,8 @@ DataOffer::GetData(wl_display* aDisplay,
+     if (pipe(pipe_fd) == -1)
+         return nullptr;
+ 
++    fprintf(stderr, "DataOffer::GetData() MIME=%s\n", aMimeType);
++
+     if (!RequestDataTransfer(aMimeType, pipe_fd[1])) {
+         NS_WARNING("DataOffer::RequestDataTransfer() failed!");
+         close(pipe_fd[0]);
+@@ -256,6 +258,7 @@ data_offer_offer (void                 *
+ {
+     auto *offer = static_cast<DataOffer*>(data);
+     offer->AddMIMEType(type);
++    fprintf(stderr, "data_offer_offer(%p) - %s\n", offer, type);
+ }
+ 
+ /* Advertise all available drag and drop actions from source.
+@@ -314,6 +317,8 @@ WaylandDataOffer::~WaylandDataOffer(void
+ bool
+ PrimaryDataOffer::RequestDataTransfer(const char* aMimeType, int fd)
+ {
++    fprintf(stderr, "PrimaryDataOffer::RequestDataTransfer(), MIME=%s, mPrimaryDataOffer = %p\n",
++        aMimeType, mPrimaryDataOffer);
+     if (mPrimaryDataOffer) {
+         gtk_primary_selection_offer_receive(mPrimaryDataOffer, aMimeType, fd);
+         return true;
+@@ -328,6 +333,7 @@ primary_data_offer(void *data,
+ {
+     auto *offer = static_cast<DataOffer*>(data);
+     offer->AddMIMEType(mime_type);
++    fprintf(stderr, "primary_data_offer - MIME=%s\n", mime_type);
+ }
+ 
+ /* gtk_primary_selection_offer_listener callback description:
+@@ -552,6 +558,8 @@ data_device_data_offer (void
+     nsRetrievalContextWayland *context =
+         static_cast<nsRetrievalContextWayland*>(data);
+     context->RegisterNewDataOffer(offer);
++    
++    fprintf(stderr, "data_device_data_offer(), offer = %p\n", offer);
+ }
+ 
+ // The new fresh data content is clipboard.
+@@ -563,6 +571,8 @@ data_device_selection (void
+     nsRetrievalContextWayland *context =
+         static_cast<nsRetrievalContextWayland*>(data);
+     context->SetClipboardDataOffer(offer);
++    
++    fprintf(stderr, "data_device_selection(), offer = %p\n", offer);
+ }
+ 
+ // The new fresh wayland data content is drag and drop.
+@@ -683,6 +693,8 @@ primary_selection_data_offer (void
+     nsRetrievalContextWayland *context =
+         static_cast<nsRetrievalContextWayland*>(data);
+     context->RegisterNewDataOffer(gtk_primary_offer);
++    
++    fprintf(stderr, "primary_selection_data_offer(), offer = %p\n", gtk_primary_offer);
+ }
+ 
+ static void
+@@ -693,6 +705,7 @@ primary_selection_selection (void
+     nsRetrievalContextWayland *context =
+         static_cast<nsRetrievalContextWayland*>(data);
+     context->SetPrimaryDataOffer(gtk_primary_offer);
++    fprintf(stderr, "pprimary_selection_selectio(), offer = %p\n", gtk_primary_offer);
+ }
+ 
+ /* gtk_primary_selection_device callback description:
