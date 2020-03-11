@@ -95,7 +95,7 @@ ExcludeArch: s390x
 %global tarballdir    firefox-%{version}
 
 %global official_branding       1
-%global pre_version             b1
+%global pre_version             b2
 
 %bcond_without langpacks
 
@@ -122,7 +122,7 @@ URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Source0:        https://archive.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
 %if %{with langpacks}
-Source1:        firefox-langpacks-%{version}%{?pre_version}-20200310.tar.xz
+Source1:        firefox-langpacks-%{version}%{?pre_version}-20200311.tar.xz
 %endif
 Source2:        cbindgen-vendor.tar.xz
 Source10:       firefox-mozconfig
@@ -172,7 +172,6 @@ Patch224:        mozilla-1170092.patch
 Patch226:        rhbz-1354671.patch
 Patch227:        firefox-locale-debug.patch
 Patch239:        mozilla-gnome-shell-search-provider.patch
-Patch240:        mozilla-gnome-shell-search-provider-icons.patch
 Patch241:        kiosk-workaround.patch
 
 # Upstream patches
@@ -181,6 +180,7 @@ Patch412:        mozilla-1337988.patch
 Patch415:        Bug-1238661---fix-mozillaSignalTrampoline-to-work-.patch
 Patch417:        bug1375074-save-restore-x28.patch
 Patch422:        mozilla-1580174-webrtc-popup.patch
+Patch423:        mozilla-1619258.patch
 
 # Wayland specific upstream patches
 Patch574:        firefox-pipewire.patch
@@ -376,10 +376,10 @@ This package contains results of tests executed during build.
 %endif
 %patch227 -p1 -b .locale-debug
 %patch239 -p1 -b .gnome-shell-search-provider
-%patch240 -p1 -b .gnome-shell-search-provider-icons
 # Workaround for kiosk mode
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1594738
 #%patch241 -p1 -b .kiosk-workaround
+%patch423 -p1 -b .1619258
 
 %patch402 -p1 -b .1196777
 %ifarch %{arm}
@@ -943,8 +943,8 @@ gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 %{mozappdir}/gmp-clearkey
 %{mozappdir}/fonts/TwemojiMozilla.ttf
 %if !%{?system_nss}
-%{mozappdir}/libfreeblpriv3.chk
-%{mozappdir}/libsoftokn3.chk
+#%{mozappdir}/libfreeblpriv3.chk
+#%{mozappdir}/libsoftokn3.chk
 %exclude %{mozappdir}/libnssckbi.so
 %endif
 %if %{build_with_asan}

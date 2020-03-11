@@ -1,7 +1,11 @@
-diff -up firefox-73.0/browser/components/shell/moz.build.gnome-shell-search-provider firefox-73.0/browser/components/shell/moz.build
---- firefox-73.0/browser/components/shell/moz.build.gnome-shell-search-provider	2020-02-07 22:12:59.000000000 +0100
-+++ firefox-73.0/browser/components/shell/moz.build	2020-02-11 09:03:31.638803105 +0100
-@@ -34,6 +34,11 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gt
+diff -up firefox-75.0/browser/components/shell/moz.build.gnome-shell-search-provider firefox-75.0/browser/components/shell/moz.build
+--- firefox-75.0/browser/components/shell/moz.build.gnome-shell-search-provider	2020-03-09 20:05:31.000000000 +0100
++++ firefox-75.0/browser/components/shell/moz.build	2020-03-11 10:10:14.935836645 +0100
+@@ -36,10 +36,16 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gt
+     XPIDL_SOURCES += [
+         'nsIGNOMEShellService.idl',
+     ]
+-
      SOURCES += [
          'nsGNOMEShellService.cpp',
      ]
@@ -9,11 +13,13 @@ diff -up firefox-73.0/browser/components/shell/moz.build.gnome-shell-search-prov
 +        SOURCES += [
 +            'nsGNOMEShellSearchProvider.cpp',
 +        ]
-+
++        LOCAL_INCLUDES += [
++            '/netwerk/base',
++        ]
  elif CONFIG['OS_ARCH'] == 'WINNT':
      XPIDL_SOURCES += [
          'nsIWindowsShellService.idl',
-@@ -60,6 +65,8 @@ for var in ('MOZ_APP_NAME', 'MOZ_APP_VER
+@@ -66,6 +72,8 @@ for var in ('MOZ_APP_NAME', 'MOZ_APP_VER
      DEFINES[var] = '"%s"' % CONFIG[var]
  
  CXXFLAGS += CONFIG['TK_CFLAGS']
@@ -22,10 +28,10 @@ diff -up firefox-73.0/browser/components/shell/moz.build.gnome-shell-search-prov
  
  with Files('**'):
      BUG_COMPONENT = ('Firefox', 'Shell Integration')
-diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gnome-shell-search-provider firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp
---- firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gnome-shell-search-provider	2020-02-11 09:00:59.350512802 +0100
-+++ firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp	2020-02-11 09:00:59.350512802 +0100
-@@ -0,0 +1,621 @@
+diff -up firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gnome-shell-search-provider firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp
+--- firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gnome-shell-search-provider	2020-03-10 15:44:12.305387571 +0100
++++ firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp	2020-03-11 10:18:05.196419671 +0100
+@@ -0,0 +1,796 @@
 +/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* vim:expandtab:shiftwidth=2:tabstop=2:
 + */
@@ -35,6 +41,9 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +
 +#include "nsGNOMEShellSearchProvider.h"
 +
++#include "nsWeakReference.h"
++#include "nsNetCID.h"
++#include "nsIOService.h"
 +#include "nsIBaseWindow.h"
 +#include "nsIDocShell.h"
 +#include "nsPIDOMWindow.h"
@@ -52,11 +61,17 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +#include "nsIFaviconService.h"
 +#include "RemoteUtils.h"
 +#include "nsIStringBundle.h"
++#include "imgIContainer.h"
++#include "imgITools.h"
++
++#include "mozilla/gfx/DataSurfaceHelpers.h"
 +
 +#include <dbus/dbus.h>
 +#include <dbus/dbus-glib-lowlevel.h>
 +
-+#define MAX_SEARCH_RESULTS_NUM 9
++using namespace mozilla;
++using namespace mozilla::gfx;
++
 +#define KEYWORD_SEARCH_STRING "special:search"
 +#define KEYWORD_SEARCH_STRING_LEN 14
 +
@@ -114,7 +129,25 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +  return DBUS_HANDLER_RESULT_HANDLED;
 +}
 +
-+nsresult nsGNOMEShellSearchProvider::QueryHistory(const char* aSearchTerm) {
++nsGNOMEShellSearchProvider::nsGNOMEShellSearchProvider()
++    : mConnection(nullptr), mSearchSerial(0) {
++  memset(mHistoryIcons, 0, sizeof(mHistoryIcons));
++}
++
++void nsGNOMEShellSearchProvider::SetHistoryIcon(int aSearchSerial,
++                                                UniquePtr<uint8_t[]> aData,
++                                                int aWidth, int aHeight,
++                                                int aIconIndex) {
++  MOZ_ASSERT(mSearchSerial == aSearchSerial);
++  MOZ_ASSERT(aIconIndex < MAX_SEARCH_RESULTS_NUM);
++  mHistoryIcons[aIconIndex].Set(aSearchSerial, std::move(aData), aWidth,
++                                aHeight);
++}
++
++nsresult nsGNOMEShellSearchProvider::NewHistorySearch(const char* aSearchTerm) {
++  // Initialize new search which invalidates all preview ones
++  mSearchSerial++;
++
 +  nsresult rv;
 +  nsCOMPtr<nsINavHistoryQuery> histQuery;
 +  rv = mHistoryService->GetNewQuery(getter_AddRefs(histQuery));
@@ -198,6 +231,100 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +  return atoi(tmp);
 +}
 +
++class AsyncFaviconDataReady final : public nsIFaviconDataCallback {
++ public:
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIFAVICONDATACALLBACK
++
++  AsyncFaviconDataReady(nsGNOMEShellSearchProvider* aSearchProvider,
++                        int aIconIndex, int aSearchSerial)
++      : mSearchProvider(aSearchProvider),
++        mIconIndex(aIconIndex),
++        mSearchSerial(aSearchSerial){};
++
++ private:
++  ~AsyncFaviconDataReady() {}
++
++  nsGNOMEShellSearchProvider* mSearchProvider;
++  int mIconIndex;
++  int mSearchSerial;
++};
++
++NS_IMPL_ISUPPORTS(AsyncFaviconDataReady, nsIFaviconDataCallback)
++
++// Inspired by SurfaceToPackedBGRA
++static UniquePtr<uint8_t[]> SurfaceToPackedRGBA(DataSourceSurface* aSurface) {
++  IntSize size = aSurface->GetSize();
++  CheckedInt<size_t> bufferSize =
++      CheckedInt<size_t>(size.width * 4) * CheckedInt<size_t>(size.height);
++  if (!bufferSize.isValid()) {
++    return nullptr;
++  }
++  UniquePtr<uint8_t[]> imageBuffer(new (std::nothrow)
++                                       uint8_t[bufferSize.value()]);
++  if (!imageBuffer) {
++    return nullptr;
++  }
++
++  DataSourceSurface::MappedSurface map;
++  if (!aSurface->Map(DataSourceSurface::MapType::READ, &map)) {
++    return nullptr;
++  }
++
++  // Convert BGRA to RGBA
++  uint32_t* aSrc = (uint32_t*)map.mData;
++  uint32_t* aDst = (uint32_t*)imageBuffer.get();
++  for (int i = 0; i < size.width * size.height; i++, aDst++, aSrc++) {
++    *aDst = *aSrc & 0xff00ff00;
++    *aDst |= (*aSrc & 0xff) << 16;
++    *aDst |= (*aSrc & 0xff0000) >> 16;
++  }
++
++  aSurface->Unmap();
++
++  return imageBuffer;
++}
++
++NS_IMETHODIMP
++AsyncFaviconDataReady::OnComplete(nsIURI* aFaviconURI, uint32_t aDataLen,
++                                  const uint8_t* aData,
++                                  const nsACString& aMimeType,
++                                  uint16_t aWidth) {
++  // This is a callback from some previous search so we don't want it
++  if (mSearchSerial != mSearchProvider->GetSearchSerial() || !aData ||
++      !aDataLen) {
++    return NS_ERROR_FAILURE;
++  }
++
++  // Decode the image from the format it was returned to us in (probably PNG)
++  nsCOMPtr<imgIContainer> container;
++  nsCOMPtr<imgITools> imgtool = do_CreateInstance("@mozilla.org/image/tools;1");
++  nsresult rv = imgtool->DecodeImageFromBuffer(
++      reinterpret_cast<const char*>(aData), aDataLen, aMimeType,
++      getter_AddRefs(container));
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  RefPtr<SourceSurface> surface = container->GetFrame(
++      imgIContainer::FRAME_FIRST,
++      imgIContainer::FLAG_SYNC_DECODE | imgIContainer::FLAG_ASYNC_NOTIFY);
++
++  if (!surface || surface->GetFormat() != SurfaceFormat::B8G8R8A8) {
++    return NS_ERROR_FAILURE;
++  }
++
++  // Allocate a new buffer that we own.
++  RefPtr<DataSourceSurface> dataSurface = surface->GetDataSurface();
++  UniquePtr<uint8_t[]> data = SurfaceToPackedRGBA(dataSurface);
++  if (!data) {
++    return NS_ERROR_OUT_OF_MEMORY;
++  }
++
++  mSearchProvider->SetHistoryIcon(mSearchSerial, std::move(data),
++                                  surface->GetSize().width,
++                                  surface->GetSize().height, mIconIndex);
++  return NS_OK;
++}
++
 +void nsGNOMEShellSearchProvider::ComposeSearchResultReply(
 +    DBusMessage* reply, const char* aSearchTerm) {
 +  uint32_t childCount = 0;
@@ -205,6 +332,11 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +  if (NS_FAILED(rv) || childCount == 0) {
 +    return;
 +  }
++
++  // Obtain the favicon service and get the favicon for the specified page
++  nsCOMPtr<nsIFaviconService> favIconSvc(
++      do_GetService("@mozilla.org/browser/favicon-service;1"));
++  nsCOMPtr<nsIIOService> ios(do_GetService(NS_IOSERVICE_CONTRACTID));
 +
 +  if (childCount > MAX_SEARCH_RESULTS_NUM) {
 +    childCount = MAX_SEARCH_RESULTS_NUM;
@@ -227,6 +359,12 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +
 +    nsAutoCString uri;
 +    child->GetUri(uri);
++
++    nsCOMPtr<nsIURI> iconIri;
++    ios->NewURI(uri, nullptr, nullptr, getter_AddRefs(iconIri));
++    nsCOMPtr<nsIFaviconDataCallback> callback =
++        new AsyncFaviconDataReady(this, i, mSearchSerial);
++    favIconSvc->GetFaviconDataForPage(iconIri, callback, 0);
 +
 +    nsAutoCString idKey;
 +    GetIDKeyForURI(i, uri, idKey);
@@ -254,7 +392,7 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +    reply = dbus_message_new_error(aMsg, DBUS_BUS_NAME, "Wrong argument");
 +  } else {
 +    reply = dbus_message_new_method_return(aMsg);
-+    nsresult rv = QueryHistory(stringArray[0]);
++    nsresult rv = NewHistorySearch(stringArray[0]);
 +    if (NS_SUCCEEDED(rv)) {
 +      ComposeSearchResultReply(reply, stringArray[0]);
 +    }
@@ -282,7 +420,7 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +    reply = dbus_message_new_error(aMsg, DBUS_BUS_NAME, "Wrong argument");
 +  } else {
 +    reply = dbus_message_new_method_return(aMsg);
-+    nsresult rv = QueryHistory(stringArray[0]);
++    nsresult rv = NewHistorySearch(stringArray[0]);
 +    if (NS_SUCCEEDED(rv)) {
 +      ComposeSearchResultReply(reply, stringArray[0]);
 +    }
@@ -313,6 +451,47 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +  dbus_message_iter_close_container(aIter, &iterDict);
 +}
 +
++/*
++  "icon-data": a tuple of type (iiibiiay) describing a pixbuf with width,
++              height, rowstride, has-alpha,
++              bits-per-sample, channels,
++              image data
++*/
++void GnomeHistoryIcon::AppendIcon(DBusMessageIter* aIter) {
++  DBusMessageIter iterDict, iterVar, iterStruct;
++  dbus_message_iter_open_container(aIter, DBUS_TYPE_DICT_ENTRY, nullptr,
++                                   &iterDict);
++  const char* key = "icon-data";
++  dbus_message_iter_append_basic(&iterDict, DBUS_TYPE_STRING, &key);
++  dbus_message_iter_open_container(&iterDict, DBUS_TYPE_VARIANT, "(iiibiiay)",
++                                   &iterVar);
++  dbus_message_iter_open_container(&iterVar, DBUS_TYPE_STRUCT, nullptr,
++                                   &iterStruct);
++
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_INT32, &mWidth);
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_INT32, &mHeight);
++  int rowstride = mWidth * 4;
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_INT32, &rowstride);
++  int hasAlpha = true;
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_BOOLEAN, &hasAlpha);
++  int bitsPerSample = 8;
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_INT32, &bitsPerSample);
++  int channels = 4;
++  dbus_message_iter_append_basic(&iterStruct, DBUS_TYPE_INT32, &channels);
++
++  DBusMessageIter iterArray;
++  dbus_message_iter_open_container(&iterStruct, DBUS_TYPE_ARRAY, "y",
++                                   &iterArray);
++  unsigned char* array = mData.get();
++  dbus_message_iter_append_fixed_array(&iterArray, DBUS_TYPE_BYTE, &array,
++                                       mWidth * mHeight * 4);
++  dbus_message_iter_close_container(&iterStruct, &iterArray);
++
++  dbus_message_iter_close_container(&iterVar, &iterStruct);
++  dbus_message_iter_close_container(&iterDict, &iterVar);
++  dbus_message_iter_close_container(aIter, &iterDict);
++}
++
 +/* We can return those fields at GetResultMetas:
 +  "id": the result ID
 +  "name": the display name for the result
@@ -325,23 +504,25 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +*/
 +void nsGNOMEShellSearchProvider::AppendResultID(DBusMessageIter* aIter,
 +                                                const char* aID) {
++  int index = GetIndexFromIDKey(aID);
 +  nsCOMPtr<nsINavHistoryResultNode> child;
-+  mHistResultContainer->GetChild(GetIndexFromIDKey(aID), getter_AddRefs(child));
++  mHistResultContainer->GetChild(index, getter_AddRefs(child));
 +  nsAutoCString title;
-+  if (NS_FAILED(child->GetTitle(title))) {
-+    return;
-+  }
++  nsAutoCString uri;
++  child->GetTitle(title);
++  child->GetUri(uri);
 +
-+  if (title.IsEmpty()) {
-+    if (NS_FAILED(child->GetUri(title)) || title.IsEmpty()) {
-+      return;
-+    }
-+  }
++  const char* titleStr = !(title.IsEmpty()) ? title.get() : uri.get();
++  const char* descStr = uri.get();
 +
-+  const char* titleStr = title.get();
 +  appendStringDictionary(aIter, "id", aID);
 +  appendStringDictionary(aIter, "name", titleStr);
-+  appendStringDictionary(aIter, "gicon", "text-html");
++  appendStringDictionary(aIter, "description", descStr);
++  if (mHistoryIcons[index].GetSearchSerial() == mSearchSerial) {
++    mHistoryIcons[index].AppendIcon(aIter);
++  } else {
++    appendStringDictionary(aIter, "gicon", "text-html");
++  }
 +}
 +
 +void nsGNOMEShellSearchProvider::AppendSearchID(DBusMessageIter* aIter,
@@ -647,10 +828,10 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.cpp.gn
 +  // dbus_connection_unref() will be called by RefPtr here.
 +  mConnection = nullptr;
 +}
-diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnome-shell-search-provider firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h
---- firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnome-shell-search-provider	2020-02-11 09:00:59.350512802 +0100
-+++ firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h	2020-02-11 09:00:59.350512802 +0100
-@@ -0,0 +1,55 @@
+diff -up firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnome-shell-search-provider firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.h
+--- firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnome-shell-search-provider	2020-03-10 15:44:12.305387571 +0100
++++ firefox-75.0/browser/components/shell/nsGNOMEShellSearchProvider.h	2020-03-10 15:44:12.308387552 +0100
+@@ -0,0 +1,87 @@
 +/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* vim:expandtab:shiftwidth=2:tabstop=2:
 + */
@@ -665,10 +846,36 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnom
 +#include "nsINavHistoryService.h"
 +#include "nsUnixRemoteServer.h"
 +#include "nsCOMPtr.h"
++#include "mozilla/UniquePtr.h"
++
++#define MAX_SEARCH_RESULTS_NUM 9
++
++class GnomeHistoryIcon {
++ public:
++  GnomeHistoryIcon() : mSearchSerial(-1), mWidth(0), mHeight(0){};
++
++  // From which search is this icon
++  void Set(int aSearchSerial, mozilla::UniquePtr<uint8_t[]> aData, int aWidth,
++           int aHeight) {
++    mSearchSerial = aSearchSerial;
++    mWidth = aWidth;
++    mHeight = aHeight;
++    mData = std::move(aData);
++  }
++
++  int GetSearchSerial() { return mSearchSerial; }
++  void AppendIcon(DBusMessageIter* aIter);
++
++ private:
++  int mSearchSerial;
++  mozilla::UniquePtr<uint8_t[]> mData;
++  int mWidth;
++  int mHeight;
++};
 +
 +class nsGNOMEShellSearchProvider : public nsUnixRemoteServer {
 + public:
-+  nsGNOMEShellSearchProvider() : mConnection(nullptr) {}
++  nsGNOMEShellSearchProvider();
 +  ~nsGNOMEShellSearchProvider() { Shutdown(); }
 +
 +  nsresult Startup();
@@ -677,6 +884,10 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnom
 +  DBusHandlerResult HandleDBusMessage(DBusConnection* aConnection,
 +                                      DBusMessage* msg);
 +  void UnregisterDBusInterface(DBusConnection* aConnection);
++
++  int GetSearchSerial() { return mSearchSerial; }
++  void SetHistoryIcon(int aSearchSerial, mozilla::UniquePtr<uint8_t[]> aData,
++                      int aWidth, int aHeight, int aIconIndex);
 +
 + private:
 +  DBusHandlerResult Introspect(DBusMessage* msg);
@@ -687,7 +898,7 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnom
 +  DBusHandlerResult ActivateResult(DBusMessage* msg);
 +  DBusHandlerResult LaunchSearch(DBusMessage* msg);
 +
-+  nsresult QueryHistory(const char* aSearchTerm);
++  nsresult NewHistorySearch(const char* aSearchTerm);
 +  void GetIDKeyForURI(int aIndex, nsAutoCString& aUri, nsAutoCString& aIDKey);
 +  int GetIndexFromIDKey(const char* aIDKey);
 +  bool IsHistoryResultNodeURI(nsINavHistoryResultNode* aHistoryNode);
@@ -703,13 +914,15 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellSearchProvider.h.gnom
 +  nsCOMPtr<nsINavHistoryService> mHistoryService;
 +  nsAutoCStringN<32> mSearchTerm;
 +  nsAutoCString mGnomeSearchTitle;
++  int mSearchSerial;
++  GnomeHistoryIcon mHistoryIcons[MAX_SEARCH_RESULTS_NUM];
 +};
 +
 +#endif  // __nsGNOMEShellSearchProvider_h__
-diff -up firefox-73.0/browser/components/shell/nsGNOMEShellService.cpp.gnome-shell-search-provider firefox-73.0/browser/components/shell/nsGNOMEShellService.cpp
---- firefox-73.0/browser/components/shell/nsGNOMEShellService.cpp.gnome-shell-search-provider	2020-02-07 22:12:59.000000000 +0100
-+++ firefox-73.0/browser/components/shell/nsGNOMEShellService.cpp	2020-02-11 09:00:59.350512802 +0100
-@@ -89,6 +89,14 @@ nsresult nsGNOMEShellService::Init() {
+diff -up firefox-75.0/browser/components/shell/nsGNOMEShellService.cpp.gnome-shell-search-provider firefox-75.0/browser/components/shell/nsGNOMEShellService.cpp
+--- firefox-75.0/browser/components/shell/nsGNOMEShellService.cpp.gnome-shell-search-provider	2020-03-09 20:05:31.000000000 +0100
++++ firefox-75.0/browser/components/shell/nsGNOMEShellService.cpp	2020-03-10 15:44:12.305387571 +0100
+@@ -101,6 +101,14 @@ nsresult nsGNOMEShellService::Init() {
  
    if (!giovfs && !gsettings) return NS_ERROR_NOT_AVAILABLE;
  
@@ -724,9 +937,9 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellService.cpp.gnome-she
    // Check G_BROKEN_FILENAMES.  If it's set, then filenames in glib use
    // the locale encoding.  If it's not set, they use UTF-8.
    mUseLocaleFilenames = PR_GetEnv("G_BROKEN_FILENAMES") != nullptr;
-diff -up firefox-73.0/browser/components/shell/nsGNOMEShellService.h.gnome-shell-search-provider firefox-73.0/browser/components/shell/nsGNOMEShellService.h
---- firefox-73.0/browser/components/shell/nsGNOMEShellService.h.gnome-shell-search-provider	2020-02-07 22:12:59.000000000 +0100
-+++ firefox-73.0/browser/components/shell/nsGNOMEShellService.h	2020-02-11 09:00:59.350512802 +0100
+diff -up firefox-75.0/browser/components/shell/nsGNOMEShellService.h.gnome-shell-search-provider firefox-75.0/browser/components/shell/nsGNOMEShellService.h
+--- firefox-75.0/browser/components/shell/nsGNOMEShellService.h.gnome-shell-search-provider	2020-03-09 20:05:31.000000000 +0100
++++ firefox-75.0/browser/components/shell/nsGNOMEShellService.h	2020-03-10 15:44:12.305387571 +0100
 @@ -10,6 +10,9 @@
  #include "nsToolkitShellService.h"
  #include "nsString.h"
@@ -747,10 +960,10 @@ diff -up firefox-73.0/browser/components/shell/nsGNOMEShellService.h.gnome-shell
    bool GetAppPathFromLauncher();
    bool mUseLocaleFilenames;
    nsCString mAppPath;
-diff -up firefox-73.0/browser/locales/en-US/chrome/browser/browser.properties.gnome-shell-search-provider firefox-73.0/browser/locales/en-US/chrome/browser/browser.properties
---- firefox-73.0/browser/locales/en-US/chrome/browser/browser.properties.gnome-shell-search-provider	2020-02-07 22:13:00.000000000 +0100
-+++ firefox-73.0/browser/locales/en-US/chrome/browser/browser.properties	2020-02-11 09:00:59.350512802 +0100
-@@ -1047,3 +1047,7 @@ confirmationHint.breakageReport.label =
+diff -up firefox-75.0/browser/locales/en-US/chrome/browser/browser.properties.gnome-shell-search-provider firefox-75.0/browser/locales/en-US/chrome/browser/browser.properties
+--- firefox-75.0/browser/locales/en-US/chrome/browser/browser.properties.gnome-shell-search-provider	2020-03-09 20:05:31.000000000 +0100
++++ firefox-75.0/browser/locales/en-US/chrome/browser/browser.properties	2020-03-10 15:44:12.306387565 +0100
+@@ -1044,3 +1044,7 @@ confirmationHint.breakageReport.label =
  # Used by the export of user's live bookmarks to an OPML file as a title for the file.
  # %S will be replaced with brandShortName
  livebookmarkMigration.title                      = %S Live Bookmarks
@@ -758,9 +971,9 @@ diff -up firefox-73.0/browser/locales/en-US/chrome/browser/browser.properties.gn
 +# LOCALIZATION NOTE (gnomeSearchProviderSearch):
 +# Used for search by Gnome Shell activity screen, %s is a searched string.
 +gnomeSearchProviderSearch=Search the web for “%s”
-diff -up firefox-73.0/toolkit/components/remote/moz.build.gnome-shell-search-provider firefox-73.0/toolkit/components/remote/moz.build
---- firefox-73.0/toolkit/components/remote/moz.build.gnome-shell-search-provider	2020-02-07 22:13:54.000000000 +0100
-+++ firefox-73.0/toolkit/components/remote/moz.build	2020-02-11 09:00:59.351512811 +0100
+diff -up firefox-75.0/toolkit/components/remote/moz.build.gnome-shell-search-provider firefox-75.0/toolkit/components/remote/moz.build
+--- firefox-75.0/toolkit/components/remote/moz.build.gnome-shell-search-provider	2020-03-09 20:07:32.000000000 +0100
++++ firefox-75.0/toolkit/components/remote/moz.build	2020-03-10 15:44:12.306387565 +0100
 @@ -25,6 +25,10 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk'
              'nsDBusRemoteServer.cpp',
          ]
@@ -772,9 +985,9 @@ diff -up firefox-73.0/toolkit/components/remote/moz.build.gnome-shell-search-pro
      CXXFLAGS += CONFIG['TK_CFLAGS']
  
  if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
-diff -up firefox-73.0/toolkit/components/remote/nsDBusRemoteServer.cpp.gnome-shell-search-provider firefox-73.0/toolkit/components/remote/nsDBusRemoteServer.cpp
---- firefox-73.0/toolkit/components/remote/nsDBusRemoteServer.cpp.gnome-shell-search-provider	2020-02-07 22:13:54.000000000 +0100
-+++ firefox-73.0/toolkit/components/remote/nsDBusRemoteServer.cpp	2020-02-11 09:00:59.351512811 +0100
+diff -up firefox-75.0/toolkit/components/remote/nsDBusRemoteServer.cpp.gnome-shell-search-provider firefox-75.0/toolkit/components/remote/nsDBusRemoteServer.cpp
+--- firefox-75.0/toolkit/components/remote/nsDBusRemoteServer.cpp.gnome-shell-search-provider	2020-03-09 20:07:00.000000000 +0100
++++ firefox-75.0/toolkit/components/remote/nsDBusRemoteServer.cpp	2020-03-10 15:44:12.306387565 +0100
 @@ -23,7 +23,7 @@
  
  #include <dlfcn.h>
