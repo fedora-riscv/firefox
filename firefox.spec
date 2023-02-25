@@ -173,7 +173,7 @@ ExcludeArch: i686
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        110.0
-Release:        3%{?pre_tag}%{?dist}
+Release:        3%{?pre_tag}.rv64%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Source0:        https://archive.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
@@ -266,6 +266,10 @@ Patch1000:       libwebrtc-screen-cast-sync.patch
 
 # Work around broken moz.build file on ppc64le (mozb#1779545, mozb#1775202)
 Patch1100:       mozilla-1775202.patch
+
+# WASM fix patch from Arch Linux: 
+# https://github.com/felixonmars/archriscv-packages/blob/master/firefox/makotokato-riscv64-support-and-zenithal-backported.patch
+Patch2000:       makotokato-riscv64-support-and-zenithal-backported-from-arch.patch 
 
 %if %{?system_nss}
 BuildRequires:  pkgconfig(nspr) >= %{nspr_version}
@@ -1084,6 +1088,9 @@ fi
 #---------------------------------------------------------------------
 
 %changelog
+* Sat Feb 25 2023 Liu Yang <Yang.Liu.sn@gmail.com>- 110.0-3.rv64
+- Add WASM fix patch from Arch Linux.
+
 * Tue Feb 14 2023 Martin Stransky <stransky@redhat.com>- 110.0-3
 - Updated to 110.0 build 3
 

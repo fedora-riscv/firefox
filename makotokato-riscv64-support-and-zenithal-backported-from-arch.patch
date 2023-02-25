@@ -1,0 +1,27 @@
+diff --git a/js/src/wasm/WasmSignalHandlers.cpp b/js/src/wasm/WasmSignalHandlers.cpp
+index cee3127507..32ff83f0ab 100644
+--- a/js/src/wasm/WasmSignalHandlers.cpp
++++ b/js/src/wasm/WasmSignalHandlers.cpp
+@@ -168,6 +168,11 @@ using mozilla::DebugOnly;
+ #      define FP_sig(p) ((p)->uc_mcontext.gregs[REG_FPRS])
+ #      define SP_sig(p) ((p)->uc_mcontext.gregs[REG_SP])
+ #    endif
++#    if defined(__linux__) && defined(__riscv) && __riscv_xlen == 64
++#    define EPC_sig(p) ((p)->uc_mcontext.__gregs[0])
++#    define X02_sig(p) ((p)->uc_mcontext.__gregs[2])
++#    define X08_sig(p) ((p)->uc_mcontext.__gregs[8])
++#    endif
+ #  elif defined(__NetBSD__)
+ #    define EIP_sig(p) ((p)->uc_mcontext.__gregs[_REG_EIP])
+ #    define EBP_sig(p) ((p)->uc_mcontext.__gregs[_REG_EBP])
+@@ -410,6 +415,10 @@ struct macos_aarch64_context {
+ #    define FP_sig(p) RFP_sig(p)
+ #    define SP_sig(p) R03_sig(p)
+ #    define LR_sig(p) RRA_sig(p)
++#elif defined(__riscv) && __riscv_xlen == 64
++#  define PC_sig(p) EPC_sig(p)
++#  define SP_sig(p) X02_sig(p)
++#  define FP_sig(p) X08_sig(p)
+ #  endif
+ 
+ static void SetContextPC(CONTEXT* context, uint8_t* pc) {
