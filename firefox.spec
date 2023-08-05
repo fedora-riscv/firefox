@@ -160,7 +160,7 @@ ExcludeArch: i686
 Summary:        Mozilla Firefox Web browser
 Name:           firefox
 Version:        116.0.1
-Release:        1%{?pre_tag}%{?dist}
+Release:        1%{?pre_tag}.rv64%{?dist}
 URL:            https://www.mozilla.org/firefox/
 License:        MPLv1.1 or GPLv2+ or LGPLv2+
 Source0:        https://archive.mozilla.org/pub/firefox/releases/%{version}%{?pre_version}/source/firefox-%{version}%{?pre_version}.source.tar.xz
@@ -1049,11 +1049,10 @@ fi
 %{mozappdir}/plugin-container
 %{mozappdir}/gmp-clearkey
 %{mozappdir}/fonts/TwemojiMozilla.ttf
-%ifarch aarch64
+%ifarch aarch64 riscv64
 %{mozappdir}/v4l2test
-%{mozappdir}/vaapitest
 %endif
-%ifarch x86_64
+%ifarch x86_64 aarch64
 %{mozappdir}/vaapitest
 %endif
 %if !%{?system_nss}
@@ -1066,6 +1065,9 @@ fi
 #---------------------------------------------------------------------
 
 %changelog
+* Sat Aug 5 2023 Liu Yang <Yang.Liu.sn@gmail.com>- 116.0.1-1.rv64
+- Fix builld on riscv64.
+
 * Fri Aug 4 2023 Martin Stransky <stransky@redhat.com>- 116.0.1-1
 - Updated to 116.0.1
 
